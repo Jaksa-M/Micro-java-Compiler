@@ -1,0 +1,297 @@
+package rs.ac.bg.etf.pp1;
+
+import java_cup.runtime.*;
+import org.apache.log4j.*;
+
+// import java.io.*;
+import rs.ac.bg.etf.pp1.ast.*;
+
+
+parser code {:
+	
+	boolean errorDetected = false;
+	
+	Logger log = Logger.getLogger(getClass());
+   
+   
+    // slede redefinisani metodi za prijavu gresaka radi izmene teksta poruke
+     
+    public void report_fatal_error(String message, Object info) throws java.lang.Exception {
+      done_parsing();
+      report_error(message, info);
+    }
+  
+    public void syntax_error(Symbol cur_token) {
+        report_error("\nSintaksna greska", cur_token);
+    }
+  
+    public void unrecovered_syntax_error(Symbol cur_token) throws java.lang.Exception {
+        report_fatal_error("Fatalna greska, parsiranje se ne moze nastaviti", cur_token);
+    }
+
+    public void report_error(String message, Object info) {
+    	errorDetected = true;
+    	StringBuilder msg = new StringBuilder(message); 
+    	if (info instanceof Symbol)
+            msg.append (" na liniji ").append(((Symbol)info).left);
+        log.error(msg.toString());
+    }
+    
+    public void report_info(String message, Object info) {
+    	StringBuilder msg = new StringBuilder(message); 
+    	if (info instanceof Symbol)
+            msg.append (" na liniji ").append(((Symbol)info).left);
+        log.info(msg.toString());
+    }
+    
+:}
+
+// Code that asks from yylex class next token and tried to pair it with grammar.
+scan with {:
+	Symbol s = this.getScanner().next_token();
+	if (s != null && s.value != null) 
+		log.info(s.toString() + " " + s.value.toString());
+	return s;
+:}
+
+
+// Terminals
+terminal PROGRAM, BREAK, CLASS, ELSE, CONST, IF, NEW, PRINT, READ, RETURN, VOID, EXTENDS, CONTINUE, SET, UNION, DO, WHILE, MAP, INTERFACE;
+terminal PLUS, MINUS, MULTIPLY, DIVIDE, MODUO, EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL;
+terminal AND, OR, ASSIGNMENT, INC, DEC, SEMI, COLON, COMMA, POINT;
+terminal LEFT_ROUND_BRACKET, RIGHT_ROUND_BRACKET, LEFT_SQUARE_BRACKET, RIGHT_SQUARE_BRACKET, LEFT_CURLY_BRACKET, RIGHT_CURLY_BRACKET;
+// When type is specified, than those leaf nodes will be saved. If not specified they won't.
+terminal Character CHAR_CONST;
+terminal Integer NUMBER, BOOL_CONST;
+terminal String IDENT;
+
+// Non terminals
+nonterminal Program, ConstDecl, VarDecl, ClassDecl, InterfaceDecl, MethodSignature, MethodDecl, FormPars, Statement;
+nonterminal DesignatorStatement, ActPars, Label, Assignop;
+nonterminal Relop, Addop, Mulop, Setop;
+// When type is specified, that class (and all derived classes) will get one more additional field of that type(Struct/Obj)
+nonterminal rs.etf.pp1.symboltable.concepts.Struct Factor;
+nonterminal rs.etf.pp1.symboltable.concepts.Struct Expr;
+nonterminal rs.etf.pp1.symboltable.concepts.Struct Term;
+nonterminal rs.etf.pp1.symboltable.concepts.Struct Condition;
+nonterminal rs.etf.pp1.symboltable.concepts.Struct CondTerm;
+nonterminal rs.etf.pp1.symboltable.concepts.Struct CondFact;
+nonterminal rs.etf.pp1.symboltable.concepts.Struct Type;
+nonterminal rs.etf.pp1.symboltable.concepts.Obj Designator;
+
+// My custom nonTerminals
+nonterminal AllDeclarationsList, ConstAssignedVal, MoreSingleLineConstDeclarations, VarDeclList, MethodDeclList;
+nonterminal MethodVarDeclList, FormParsTypeIdentList, StatementList, StatementArrayBrackets;
+nonterminal ActParsExprList, ConstValueAssignment, VarDeclAssignment, ActPar;
+nonterminal DoHelper, ActParsHelper, ElseHelper, WhileHelper;
+nonterminal ProgramName, FormParsTypeName, VarDeclLast, VarDeclNotLast;
+
+nonterminal rs.etf.pp1.symboltable.concepts.Struct TermMulopFactorList;
+nonterminal rs.etf.pp1.symboltable.concepts.Struct ExprAddopTermList;
+nonterminal rs.etf.pp1.symboltable.concepts.Struct ConditionCondTermList;
+nonterminal rs.etf.pp1.symboltable.concepts.Struct CondTermCondFactList;
+nonterminal rs.etf.pp1.symboltable.concepts.Obj DesignatorArrayName;
+nonterminal rs.etf.pp1.symboltable.concepts.Obj MethodSignatureTypeName;
+
+
+// precedences
+precedence left ELSE;
+
+// Grammar
+
+Program ::= (Program) PROGRAM ProgramName AllDeclarationsList LEFT_CURLY_BRACKET MethodDeclList RIGHT_CURLY_BRACKET;
+
+ProgramName ::= (ProgramName) IDENT;
+
+AllDeclarationsList ::=   (ConstDeclarations) AllDeclarationsList ConstDecl
+						| (VarDeclarations) AllDeclarationsList VarDecl
+						| (NoDeclarations) // epsilon
+						;
+
+
+ConstDecl ::= (ConstDecl) CONST Type ConstValueAssignment MoreSingleLineConstDeclarations SEMI;
+
+ConstValueAssignment ::= (ConstValueAssignment) IDENT ASSIGNMENT ConstAssignedVal;
+
+ConstAssignedVal ::=    (ConstIntegerValue) NUMBER
+					  | (ConstCharValue) CHAR_CONST
+			   		  | (ConstBooleanValue) BOOL_CONST
+			   		  ;
+
+MoreSingleLineConstDeclarations ::=   (MoreConstDeclarations) MoreSingleLineConstDeclarations COMMA ConstValueAssignment
+									| (NoMoreConstDeclarations); // epsilon
+
+
+VarDecl ::=   (VarDeclNormal) Type VarDeclList
+			| (VarDeclNormalError) error:e {:parser.report_error("Oporavak od greske [VarDecl] na liniji " + eleft, null);:} SEMI
+			;
+
+VarDeclList ::=   (VarDeclListMultiple) VarDeclNotLast VarDeclList
+				| (VarDeclListLast) VarDeclLast
+				;
+
+VarDeclAssignment ::=   (VarDeclAssignmentVariable) IDENT
+					  | (VarDeclAssignmentArray) IDENT LEFT_SQUARE_BRACKET RIGHT_SQUARE_BRACKET
+					  ;
+
+VarDeclNotLast ::=   (VarDeclNotLast1) VarDeclAssignment COMMA
+   				   | (VarDeclNotLast1Error) error:e {: parser.report_error("Oporavak od greske do ',' na liniji " + eleft, null); :} COMMA
+				   ;
+
+VarDeclLast ::=   (VarDeclLast1) VarDeclAssignment SEMI
+				| (VarDeclLast1Error) error:e {: parser.report_error("Oporavak od greske do ';' na liniji " + eleft, null); :} SEMI
+				;
+
+
+Type ::= (Type) IDENT;
+
+
+MethodDeclList ::=   (MethodDeclList1) MethodDeclList MethodDecl
+				   | (EmptyMethodDeclList1); // epsilon
+
+MethodDecl ::= (MethodDecl) MethodSignature MethodVarDeclList LEFT_CURLY_BRACKET StatementList RIGHT_CURLY_BRACKET;
+
+MethodSignature ::=   (MethodSignatureFormPars) MethodSignatureTypeName LEFT_ROUND_BRACKET FormPars 
+					| (MethodSignatureEmpty) MethodSignatureTypeName LEFT_ROUND_BRACKET RIGHT_ROUND_BRACKET
+					;
+					
+MethodSignatureTypeName ::=   (MethodSignatureTypeNameType) Type IDENT
+							| (MethodSignatureTypeNameVoid) VOID IDENT
+							;
+					
+MethodVarDeclList ::=   (MethodVarDeclList1) MethodVarDeclList VarDecl
+					  | (EmptyMethodVarDeclList1); // epsilon
+
+
+FormPars ::= (FormPars) FormParsTypeIdentList;
+
+FormParsTypeName ::=   (FormParsTypeNameVariable) Type IDENT
+					 | (FormParsTypeNameArray) Type IDENT LEFT_SQUARE_BRACKET RIGHT_SQUARE_BRACKET
+					 ;
+
+FormParsTypeIdentList ::=   (FormParsTypeIdentList1) FormParsTypeName COMMA FormParsTypeIdentList
+						  | (FormParsTypeIdentList1Error) error:e {: parser.report_error("Oporavak od greske [FormPars] do ',' na liniji " + eleft, null); :} COMMA FormParsTypeIdentList
+					      | (EmptyFormParsTypeIdentList1) FormParsTypeName RIGHT_ROUND_BRACKET
+					      | (EmptyFormParsTypeIdentList1Error) error:e {: parser.report_error("Oporavak od greske [FormPars] do ')' na liniji " + eleft, null); :} RIGHT_ROUND_BRACKET
+					      ;
+
+StatementList ::=    (StatementList1) StatementList Statement
+				   | (EmptyStatementList1); // epsilon
+
+Statement ::=  (StatementDesignatorStatement) DesignatorStatement SEMI
+			 | (StatementIfElse) IF LEFT_ROUND_BRACKET Condition RIGHT_ROUND_BRACKET Statement StatementArrayBrackets
+			 | (StatementIfElseError) IF LEFT_ROUND_BRACKET error:e {: parser.report_error("Oporavak od greske do ')' na liniji " + eleft, null); :} RIGHT_ROUND_BRACKET Statement StatementArrayBrackets
+			 | (StatementBreak) BREAK SEMI
+			 | (StatementContinue) CONTINUE SEMI
+			 | (StatementReturnEmpty) RETURN SEMI
+			 | (StatementReturnExpr) RETURN Expr SEMI
+			 | (StatementRead) READ LEFT_ROUND_BRACKET Designator RIGHT_ROUND_BRACKET SEMI
+			 | (StatementPrintExpr) PRINT LEFT_ROUND_BRACKET Expr RIGHT_ROUND_BRACKET SEMI
+			 | (StatementPrintExprNumber) PRINT LEFT_ROUND_BRACKET Expr COMMA NUMBER RIGHT_ROUND_BRACKET SEMI
+			 | (StatementDoWhileCond) DoHelper Statement WhileHelper LEFT_ROUND_BRACKET Condition RIGHT_ROUND_BRACKET SEMI
+			 | (StatementDoWhileEmpty) DoHelper Statement WhileHelper LEFT_ROUND_BRACKET RIGHT_ROUND_BRACKET SEMI
+			 | (StatementDoWhileCondDesStatement) DoHelper Statement WhileHelper LEFT_ROUND_BRACKET Condition COMMA DesignatorStatement RIGHT_ROUND_BRACKET SEMI			 
+			 | (StatementStatementList) LEFT_CURLY_BRACKET StatementList RIGHT_CURLY_BRACKET
+			 ;
+			 
+DoHelper ::= (DoHelper) DO; // Helper for counting how many while loops we are entering
+
+WhileHelper ::= (WhileHelper) WHILE; // Helper for processing continue
+
+StatementArrayBrackets ::=   (StatementArrayBrackets1) ElseHelper Statement
+						   | (EmptyStatementArrayBrackets1); // epsilon
+
+ElseHelper ::= (ElseHelper) ELSE; // Helper for 
+
+Label ::= (Label) IDENT;
+
+Condition ::= (Condition) ConditionCondTermList;
+
+ConditionCondTermList ::=   (ConditionCondTermListOr) ConditionCondTermList OR CondTerm
+				    	  | (ConditionCondTermListCondTerm) CondTerm
+				    	  ;
+
+CondTerm ::= (CondTerm) CondTermCondFactList;
+
+CondTermCondFactList ::=   (CondTermCondFactListAnd) CondTermCondFactList AND CondFact
+				    	 | (CondTermCondFactListCondFact) CondFact
+				    	 ;
+
+CondFact ::=   (CondFactExpr) Expr
+			 | (CondFactRelopExpr) Expr Relop Expr
+			 ;
+			 
+
+DesignatorStatement ::=   (DesignatorAssignOperation) Designator Assignop Expr
+						| (DesignatorStatementError) error:e
+						  {: parser.report_error("Oporavak od greske do ; u DesignatorStatementu na liniji: " + eleft, null); :}
+                        | (DesignatorFunctionCallActPars) Designator LEFT_ROUND_BRACKET ActPars RIGHT_ROUND_BRACKET  // just a function call without assigning (f1();)
+						| (DesignatorPostIncrement) Designator INC
+						| (DesignatorPostDecrement) Designator DEC
+						| (DesignatorAssignopSetop) Designator Assignop Designator Setop Designator
+						;
+
+ActPars ::=   (ActParsExist) ActParsHelper ActPar ActParsExprList
+		    | (ActParsEmpty); // epsilon, instead of writing inside DesignatorStatement and Factor, I moved those empty pars here
+
+ActParsExprList ::=   (ActParsExprList1) ActParsExprList COMMA ActPar
+				    | (EmptyActParsExprList1); // epsilon
+				    
+ActPar ::= (ActPar) Expr;
+
+// Used to help with nested function calls inside function call
+ActParsHelper ::= (ActParsHelper); // epsilon
+
+Expr ::=   (ExprTerm) ExprAddopTermList
+		 | (ExprMap) Designator MAP Designator;
+
+ExprAddopTermList ::=   (ExprAddopTermListAdd) ExprAddopTermList Addop Term
+				      | (ExprAddopTermListTerm) Term;
+
+Term ::= (Term) TermMulopFactorList;
+
+TermMulopFactorList ::=   (TermMulopFactorListMul) TermMulopFactorList Mulop Factor
+					    | (TermMulopFactorListFactor) Factor;
+
+Factor ::=   (FactorDesignator) Designator
+		   | (FactorDesignatorMinus) MINUS Designator
+		   | (FactorDesignatorActPars) Designator LEFT_ROUND_BRACKET ActPars RIGHT_ROUND_BRACKET 	// assigning function call (i = f1();)
+		   | (FactorNumConst) NUMBER
+		   | (FactorNumConstMinus) MINUS NUMBER
+		   | (FactorCharConst) CHAR_CONST
+		   | (FactorBoolConst) BOOL_CONST
+		   | (FactorNewExpr) NEW Type LEFT_SQUARE_BRACKET Expr RIGHT_SQUARE_BRACKET
+		   | (FactorBracketExpression) LEFT_ROUND_BRACKET Expr RIGHT_ROUND_BRACKET
+		   | (FactorBracketExpressionMinus) MINUS LEFT_ROUND_BRACKET Expr RIGHT_ROUND_BRACKET
+		   ;
+		   
+
+Designator ::=   (DesignatorVar) IDENT
+			   | (DesignatorElem) DesignatorArrayName LEFT_SQUARE_BRACKET Expr RIGHT_SQUARE_BRACKET
+			   ;
+	
+DesignatorArrayName ::= (DesignatorArrayName) IDENT;   
+
+Assignop ::= (Assignop) ASSIGNMENT;
+
+Addop ::=   (PlusOp) PLUS
+		  | (MinusOp) MINUS
+		  ;
+
+Mulop ::=   (MultiplyOp) MULTIPLY
+		  | (DivideOp) DIVIDE
+		  | (ModuoOp) MODUO
+		  ;
+
+Relop ::=   (EqualOp) EQUAL
+		  | (NotEqualOp) NOT_EQUAL
+		  | (GreaterOp) GREATER
+		  | (GreaterEqualOp) GREATER_EQUAL
+		  | (LessOp) LESS
+		  | (LessEqualOp) LESS_EQUAL
+		  ;
+		  
+Setop ::= (Setop) UNION;
+
+
+

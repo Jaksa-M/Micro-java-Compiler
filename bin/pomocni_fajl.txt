@@ -1,0 +1,89 @@
+1. Scope node
+	Parent (ref. Scope): - pokazivac na Scope oca, okruzujuci ospeg
+	Locals (ref. Obj): - pokazivac na listu Object cvorova koji se nalaze u istom scope
+	nVars  (int): - broj Var promenljivih (i globalnih i lokalnih) u scope-u
+	
+2. Obj node
+	Kind:
+		Var	(int a, c[]), globalna/lokalna promenljiva
+		Meth	(void main() {}), metoda
+		Con	(const int b = 5), konstanta
+		Type	(int), za konkretan tip
+		Field	(rec a { int b; }), koristi se kod klasa (nema za moj nivo)
+		Prog	(program Test), samo 1 obj cvor programa u celom projektu
+		Elem	(c[5]) // ne ide u tabelu simbola
+	Name:
+		... // ne sme da se nadju 2 ista imena u jednom scope-u (u razlicitim moze)
+	Type (referenca na Struct cvor):
+		Var,Con,Field,Elem - tip promenljive (prost ili slozen)
+		Meth - povratni tip metode
+		Type - structurni cvor za taj tip
+	Next (ref. Object):
+		... ulancavanje u listu u istom scope-u
+	Adr:
+		Var, Field - offset od pocetka scope-a (inc)
+		Con - vrednost konstante (zato sto se konstante ne cuvaju u memoriji)
+		(4ta faza) Meth - adresa pocetka metode (trenutni PC)
+	Level:
+		Var, Con - 0 (globalna) ili 1 (lokalna)
+		Field - 2
+		Meth - broj formalnih parametara metode (npr f(int a, int b)int c; to su 2 form parametra)
+	fpPos:
+		Var - 1 (formalni parametar metode - ili nesto drugo u zavisnosti od implementacije)
+	Locals (referenca na listu Obj cvorova koji su medjusobno ulancani):
+		pokazivac na sve objektne cvorove ovog scope-a
+		Npr metoda f1()int a, b;{}, a i b ce biti ulancani za taj novi scope te metode.
+		Prog, Meth
+		
+3. Struct node
+	Kind:
+		None (void tip)
+		Int
+		Char
+		Bool
+		Array
+		Class
+		Enum
+		Interface
+	Elem type (ref. Struct):
+		pozivac na strukturni cvor odredjenog tipa elementa niza
+	N:
+		broj polja klase
+	Fields(Members) (ref. Obj):
+		Lolals za klasu
+		Type
+		
+
+Metode koje se nalaze u Struct klasi:
+
+1) equals - Gleda da li su dva strukturna cvora ekvivalentna. Osim u slucajevima kada se poredi nesto sto je Array
+ili Class. Kod Array se gleda koji su cvorovi njihovih elemenata.
+
+2) compatibleWith - proverava da li su uporedivi (<, >, ==...). Prvo proveri da li su ekvivalentni sa equal, a ako nisu
+onda pita da li je nesto RefType (tj array ili class), a druga strana nullType.
+
+3) assignableTo - prvo proveri da li su equal, pa onda da li je desna strana nullType a leva RefType (ne moze se reci null = a), i na kraju
+ako se radi o nizovima gleda se da li je levi void niz, a desno onda moze biti bilo koji tip niza (void[] = *[]).
+Leva strana je source, desna destination.
+
+
+* Instrukcije:
+1 bajt uvek za kod instrukcije, + koliko vec bajta treba za operande.
+
+
+1) enter b1, b2
+b1 - broj formalnih parametara (nalazi se u Level polju Obj cvora).
+b2 - zbir formalnih i lokalnih parametara.
+
+2) svaki kraj funkcije se zavrsava sa exit, pa onda return. One zajedno ciste aktivacioni zapis. Exit cisti ono sto je napravila enter
+instrukcija. A return vraca na adresu pre call.
+
+3) jmp(adr)
+prosledjujemo apsolutnu adresu skoka. Pa ona sama sracuna relativni pomeraj onda.
+
+4) ostale uslovne jmp instrukcije. Uvek stavljamo obrnuti uslov, znaci ako gledamo if(a == b) onda kao uslov pisemo ne (not equal), jer se
+tada skace na else granu. A ne pisemo eq.
+Kao adresu prosledjujemo apsolutnu adresu.
+
+5)fixup se koristi kada mi skacemo unapred, a u trenutku generisanja adrese mi ne znamo gde cemo da skocimo.
+I onda kad stignemo do mesta gde treba da se skoci, pozovemo fixup i prosledimo mu adresu offseta kada smo pozvali skok a nismo znali adresu.
